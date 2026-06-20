@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MiMo 声音复刻合成</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <h1>MiMo 声音复刻合成</h1>
+        <p>上传 mp3、wav 或 m4a 声音样本，输入文本，生成复刻音色的 wav 音频。</p>
+      </div>
+      <div class="top-actions">
+        <button class="settings-button" id="openSettings" type="button" title="打开设置">
+          <span>⚙</span>
+          <span>设置</span>
+        </button>
+        <div class="model-pill">mimo-v2.5-tts-voiceclone</div>
+      </div>
+    </header>
+
+    <section class="workspace">
+      <section class="panel composer">
+        <div class="panel-head">
+          <div>
+            <h2>合成设置</h2>
+            <p>合成文本会作为 assistant 消息，风格指令会作为 user 消息。</p>
+          </div>
+          <span class="key-state" id="keyState">检查配置中</span>
+        </div>
+
+        <form class="form" id="synthesisForm">
+          <label class="upload" for="voiceFile" id="dropZone">
+            <span class="upload-icon">↑</span>
+            <span>
+              <strong id="fileName">选择或拖入声音样本</strong>
+              <small>支持 mp3 / wav / m4a，Base64 编码后不超过 10 MB。</small>
+            </span>
+            <span class="upload-action">选择文件</span>
+            <input id="voiceFile" name="voiceFile" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/m4a" required />
+          </label>
+
+          <div class="grid-two">
+            <label class="field">
+              <span>风格指令</span>
+              <input id="stylePrompt" name="stylePrompt" placeholder="例如：温柔、自然、语速适中，像在给朋友讲解。" />
+            </label>
+            <div class="field">
+              <span>输出格式</span>
+              <div class="format-value">WAV</div>
+            </div>
+          </div>
+
+          <div class="style-helper">
+            <div class="helper-head">
+              <strong>不会写风格指令？</strong>
+              <span>可以从语气、情绪、语速、角色感这几类描述。</span>
+            </div>
+            <div class="style-chips">
+              <button type="button" data-style-prompt="自然、清晰、语速适中，像在给朋友认真讲解。">自然讲解</button>
+              <button type="button" data-style-prompt="自然、清晰、专业但不生硬，语速适中，像在认真讲解一个知识点或产品功能。">专业讲解</button>
+              <button type="button" data-style-prompt="温柔、放松、带一点微笑感，语速偏慢。">温柔放松</button>
+              <button type="button" data-style-prompt="兴奋、明亮、语速稍快，像刚收到好消息。">兴奋开心</button>
+              <button type="button" data-style-prompt="沉稳、专业、咬字清楚，适合产品介绍或旁白。">专业旁白</button>
+              <button type="button" data-style-prompt="低声、亲近、有一点气声，像深夜电台。">深夜电台</button>
+            </div>
+            <p>也可以在合成文本开头加标签，例如：（开心）今天真的太棒了！ 或 [轻笑] 没想到你还记得。</p>
+          </div>
+
+          <label class="field">
+            <span>合成文本</span>
+            <textarea name="text" required placeholder="请输入要合成的文本，可加入风格标签和音频标签。">(温柔 磁性)夜已经深了，城市还在呼吸。[轻笑] 没想到你还记得这件事。
+
+这么多年过去了，[叹气] 再走过那条街，心里一下子空了一块。</textarea>
+          </label>
+
+          <div class="actions">
+            <button class="primary-button" id="submitButton" type="submit">提交到合成队列</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel result-panel">
+        <div class="panel-head">
+          <div>
+            <h2>当前任务</h2>
+            <p id="statusText">等待上传声音样本。</p>
+          </div>
+        </div>
+
+        <div class="result-body">
+          <div class="flow compact-flow">
+            <div class="flow-item active" id="stepUpload">
+              <b>1</b>
+              <span>等待音频样本</span>
+            </div>
+            <div class="flow-item" id="stepRequest">
+              <b>2</b>
+              <span>发送复刻请求</span>
+            </div>
+            <div class="flow-item" id="stepResult">
+              <b>3</b>
+              <span>生成可播放音频</span>
+            </div>
+          </div>
+
+          <div class="wave" id="waveContainer">
+            <canvas id="waveCanvas"></canvas>
+          </div>
+
+          <div class="custom-player" id="customPlayer">
+            <button class="player-play-btn" id="playerPlayBtn" type="button" title="播放/暂停">
+              <svg id="playerPlayIcon" viewBox="0 0 24 24" width="20" height="20"><polygon points="6,3 20,12 6,21" fill="currentColor"/></svg>
+              <svg id="playerPauseIcon" viewBox="0 0 24 24" width="20" height="20" style="display:none"><rect x="5" y="3" width="4" height="18" rx="1" fill="currentColor"/><rect x="15" y="3" width="4" height="18" rx="1" fill="currentColor"/></svg>
+            </button>
+            <div class="player-progress" id="playerProgress">
+              <div class="player-progress-fill" id="playerProgressFill"></div>
+            </div>
+            <span class="player-time" id="playerTime">0:00</span>
+          </div>
+          <div class="player-text" id="playerText">
+            <div class="guide-title">标签用法速查</div>
+            <div class="guide-section">
+              <div class="guide-heading">风格标签 <span class="guide-desc">放在文本开头，控制整体语气</span></div>
+              <div class="guide-row"><span class="guide-label">格式</span>(关键词)文本 支持 () （） [] 可叠加</div>
+              <div class="guide-row"><span class="guide-label">情绪</span>开心 悲伤 愤怒 恐惧 惊讶 兴奋 委屈 平静 冷漠 · 怅然 欣慰 无奈 愧疚 释然 嫉妒 厌倦 忐忑 动情</div>
+              <div class="guide-row"><span class="guide-label">语调</span>温柔 高冷 活泼 严肃 慵懒 俏皮 深沉 干练 凌厉</div>
+              <div class="guide-row"><span class="guide-label">音色</span>磁性 醇厚 清亮 空灵 稚嫩 苍老 甜美 沙哑 醇雅</div>
+              <div class="guide-row"><span class="guide-label">腔调</span>夹子音 御姐音 正太音 大叔音 台湾腔</div>
+              <div class="guide-row"><span class="guide-label">方言</span>东北话 四川话 河南话 粤语</div>
+              <div class="guide-row"><span class="guide-label">特殊</span>唱歌（必须放在最开头）</div>
+            </div>
+            <div class="guide-section">
+              <div class="guide-heading">音频标签 <span class="guide-desc">插在文本任意位置，控制细节表现</span></div>
+              <div class="guide-row"><span class="guide-label">格式</span>[关键词]</div>
+              <div class="guide-row"><span class="guide-label">呼吸</span>吸气 深呼吸 叹气 长叹一口气 喘息 屏息</div>
+              <div class="guide-row"><span class="guide-label">情绪</span>紧张 害怕 激动 疲惫 委屈 撒娇 心虚 震惊 不耐烦</div>
+              <div class="guide-row"><span class="guide-label">声音</span>颤抖 声音颤抖 变调 破音 鼻音 气声 沙哑</div>
+              <div class="guide-row"><span class="guide-label">哭笑</span>笑 轻笑 大笑 冷笑 抽泣 呜咽 哽咽 嚎啕大哭</div>
+            </div>
+          </div>
+
+          <audio id="audioPlayer"></audio>
+          <div class="result-actions">
+            <a class="secondary-button disabled" id="downloadLink" href="#" download="mimo-voiceclone.wav">下载 wav</a>
+            <button class="secondary-button" id="clearButton" type="button">清空当前</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-head">
+          <div>
+            <h2>历史合成结果</h2>
+            <p>后台任务完成后会保存在本机历史中。</p>
+          </div>
+          <label class="select-all-wrap">
+            <input type="checkbox" id="selectAllJobs" />
+            <span>全选</span>
+          </label>
+        </div>
+        <div class="batch-bar" id="batchBar">
+          <span id="batchCount">已选 0 项</span>
+          <button type="button" class="batch-delete-btn" id="batchDeleteBtn">删除选中</button>
+        </div>
+        <div class="history-list" id="historyList">
+          <div class="empty-history">暂无历史任务。</div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog class="settings-modal" id="settingsModal">
+    <form class="settings-card" id="settingsForm" method="dialog">
+      <div class="settings-head">
+        <div>
+          <h2>接口设置</h2>
+          <p>API Key 只提交给本地后端代理，并持久化在本机用户目录。</p>
+        </div>
+        <button class="close-button" id="closeSettings" type="button" title="关闭">×</button>
+      </div>
+
+      <label class="field">
+        <span>MiMo API Key</span>
+        <input id="apiKey" name="apiKey" type="password" autocomplete="off" placeholder="请输入 MiMo API Key" />
+      </label>
+
+      <label class="field">
+        <span>API Base URL</span>
+        <input id="baseUrl" name="baseUrl" value="https://api.xiaomimimo.com/v1" required />
+      </label>
+
+      <div class="notification-section">
+        <button class="secondary-button" id="enableNotifications" type="button">获取通知权限</button>
+        <p class="notification-desc">点击按钮即可获取浏览器通知权限，在合成任务成功或失败时，可以及时通知你。</p>
+      </div>
+
+      <div class="settings-note" id="settingsNote">保存后会写入本机用户目录，不会在前端接口中返回明文 Key。</div>
+
+      <div class="modal-actions">
+        <button class="secondary-button" id="cancelSettings" type="button">取消</button>
+        <button class="primary-button" type="submit">保存设置</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="confirm-modal" id="confirmModal">
+    <div class="confirm-card">
+      <p class="confirm-msg" id="confirmMsg"></p>
+      <div class="confirm-actions">
+        <button type="button" class="secondary-button" id="confirmCancel">取消</button>
+        <button type="button" class="primary-button confirm-danger" id="confirmOk">确认删除</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
