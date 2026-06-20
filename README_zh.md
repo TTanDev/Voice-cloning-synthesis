@@ -4,7 +4,7 @@
 
 一个基于 [小米 MiMo](https://platform.xiaomimimo.com/) `mimo-v2.5-tts-voiceclone` 模型的本地 Web 声音克隆合成工具。上传一段声音样本，输入文本，即可在浏览器中生成复刻音色的自然语音。
 
-![截图](docs/screenshot.png)
+![截图](docs/screenshot-CN.png)
 
 ## 功能特性
 

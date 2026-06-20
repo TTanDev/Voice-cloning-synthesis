@@ -4,7 +4,7 @@
 
 A local web application for voice cloning and speech synthesis, powered by the [Xiaomi MiMo](https://platform.xiaomimimo.com/) `mimo-v2.5-tts-voiceclone` model. Upload a voice sample, enter text, and generate natural-sounding speech in a cloned voice — all from your browser.
 
-![Screenshot](docs/screenshot.png)
+![Screenshot](docs/screenshot-EN.png)
 
 ## Features
 
