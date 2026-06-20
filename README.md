@@ -1,29 +1,18 @@
 # MiMo Voice Cloning Synthesis Tool
 
-[中文文档](README_zh.md)
+> 🎤 Upload a voice sample, type some text — get back speech in that cloned voice.
 
-A local web application for voice cloning and speech synthesis, powered by the [Xiaomi MiMo](https://platform.xiaomimimo.com/) `mimo-v2.5-tts-voiceclone` model. Upload a voice sample, enter text, and generate natural-sounding speech in a cloned voice — all from your browser.
+[中文文档](README_zh.md)
 
 ![Screenshot](docs/screenshot-EN.png)
 
-## Features
+---
 
-- **Voice Cloning** — Upload an mp3/wav/m4a voice sample and generate speech that mimics the original voice
-- **Style Control** — Fine-tune output with natural language style prompts and inline audio tags (emotions, tone, speed, dialect, etc.)
-- **Background Task Queue** — Submit multiple synthesis jobs; they run sequentially in the background while you keep working
-- **Waveform Player** — Custom audio player with real-time Canvas waveform visualization and scrubbing
-- **Persistent History** — All synthesis results are saved locally as WAV files with metadata, ready to play, download, or delete
-- **Browser Notifications** — Get notified when a synthesis job completes or fails
-- **Batch Management** — Select and delete multiple history entries at once
-- **API Key Security** — The API key is stored server-side only; the frontend never sees the raw key
+A local web application for voice cloning and speech synthesis, powered by the [Xiaomi MiMo](https://platform.xiaomimimo.com/) `mimo-v2.5-tts-voiceclone` model. No GPU, no Python dependencies, no Docker — just clone a voice and start generating speech from your browser.
 
-## Prerequisites
+---
 
-- **Java 17+**
-- **Maven 3.6+**
-- A Xiaomi MiMo API Key — get one at [platform.xiaomimimo.com](https://platform.xiaomimimo.com/)
-
-## Quick Start
+## ⚡ Quick Start
 
 ```bash
 git clone https://github.com/TTanDev/Voice-cloning-synthesis.git
@@ -31,27 +20,56 @@ cd Voice-cloning-synthesis
 mvn spring-boot:run
 ```
 
-Open [http://localhost:8080/](http://localhost:8080/) in your browser.
+→ Open [http://localhost:8080](http://localhost:8080)
 
-## Usage
+**Requirements:** Java 17+ · Maven 3.6+ · [MiMo API Key](https://platform.xiaomimimo.com/)
 
-1. Click **Settings** (top-right) and enter your MiMo API Key. The default API Base URL is `https://api.xiaomimimo.com/v1`.
-2. Upload a voice sample (mp3, wav, or m4a — max ~10 MB after Base64 encoding).
-3. (Optional) Enter a **style prompt** — e.g., "gentle, natural, moderate pace" — or pick one of the presets.
-4. Enter the **synthesis text**. You can embed style tags like `(happy)Today is amazing!` and audio tags like `[sigh]` for fine-grained control.
-5. Click **Submit to Synthesis Queue**. The job runs in the background; you can keep submitting more while it processes.
-6. Once complete, play, download, or manage results in the **History** panel.
+---
 
-### Style & Audio Tags
+## ✨ What Can It Do?
 
-The MiMo model supports rich in-text control:
+### 🎤 Clone Any Voice
+Upload an mp3/wav/m4a sample (~10 MB max). The model learns the voice characteristics instantly — no training, no fine-tuning. One upload, ready to go.
 
-- **Style tags** at the start of text: `(happy)text`, `(gentle magnetic)text`, `(Cantonese)text`
-- **Audio tags** anywhere in text: `[sigh]`, `[chuckle]`, `[trembling]`, `[deep breath]`
+### 🎭 Rich Emotional Control
+Go far beyond flat robotic TTS. Direct how the voice sounds with:
 
-See the in-app tag reference guide or [mimo-tts-api-doc.md](mimo-tts-api-doc.md) for the full list.
+| Control | Example | Effect |
+|---------|---------|--------|
+| Style prompt | `gentle, natural, moderate pace` | Sets overall tone for the entire output |
+| Style tag | `(happy)Today is amazing!` | Applies emotion to the following text |
+| Audio tag | `I'm fine [sigh]` | Inserts non-verbal sounds (laugh, sigh, breath...) |
 
-## Project Structure
+Supported styles include: happy, sad, angry, gentle, magnetic, Cantonese, and more.  
+Supported audio tags: `[sigh]` · `[chuckle]` · `[trembling]` · `[deep breath]`
+
+→ Full tag reference: [mimo-tts-api-doc.md](mimo-tts-api-doc.md)
+
+### ⏱️ Queue & Walk Away
+Submit multiple synthesis jobs at once. They process sequentially in the background — no blocking, no waiting. You'll get a browser notification when each job finishes.
+
+### 🎧 Waveform Player
+Built-in audio player with real-time Canvas waveform visualization. Scrub through your synthesis, preview any segment, download as WAV.
+
+### 📜 Persistent History
+Every result is saved locally with full metadata. Replay, download, or batch-delete past jobs — nothing gets lost between sessions.
+
+### 🏠 Local-First
+All data stays in your project directory (`.mimo-voiceclone/`). Nothing leaves your machine except the API calls to MiMo.
+
+---
+
+## 📖 Usage
+
+1. **Configure** → Click Settings (top-right) → paste your MiMo API Key
+2. **Upload** → Drop a voice sample (mp3, wav, m4a)
+3. **Style** (optional) → Type a style prompt or pick a preset
+4. **Synthesize** → Enter text with optional tags, click Submit
+5. **Manage** → Play, download, or organize results in History
+
+---
+
+## 🏗️ Project Structure
 
 ```
 ├── pom.xml                               # Maven configuration
@@ -76,7 +94,9 @@ See the in-app tag reference guide or [mimo-tts-api-doc.md](mimo-tts-api-doc.md)
         └── styles.css                    # Styles
 ```
 
-## Tech Stack
+---
+
+## 🛠️ Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
@@ -86,24 +106,34 @@ See the in-app tag reference guide or [mimo-tts-api-doc.md](mimo-tts-api-doc.md)
 | Storage | File system (JSON + WAV) |
 | External API | Xiaomi MiMo TTS (`mimo-v2.5-tts-voiceclone`) |
 
-## API Documentation Note
+---
 
-The file `mimo-tts-api-doc.md` is a Markdown adaptation of the official Xiaomi MiMo TTS API reference documentation. The official documentation does not provide a Markdown version, so this file was manually compiled from the [official reference](https://mimo.mi.com/#/docs) on **June 20, 2026 (~20:00 CST)**. It may not reflect the latest API changes. For the most up-to-date information, please refer to the [official MiMo documentation](https://mimo.mi.com/).
+## 📋 API Documentation Note
 
-## Data Privacy
+The file `mimo-tts-api-doc.md` is a Markdown adaptation of the official Xiaomi MiMo TTS API reference. The official docs don't provide a Markdown version, so this file was manually compiled from the [official reference](https://mimo.mi.com/#/docs) on **June 20, 2026 (~20:00 CST)**. It may not reflect the latest API changes. For the most up-to-date information, please refer to the [official MiMo documentation](https://mimo.mi.com/).
 
-All data is stored locally in the `.mimo-voiceclone/` directory within the project folder:
+---
 
-- `settings.json` — API Key and Base URL
-- `history/` — Synthesis results (JSON metadata + WAV audio)
-- `voice-queue/` — Temporary voice samples for pending jobs (auto-cleaned)
+## 🔒 Data Storage
 
-The `.mimo-voiceclone/` directory is included in `.gitignore` and will **never** be committed to the repository.
+All data is stored locally in the `.mimo-voiceclone/` directory:
 
-## License
+| File/Dir | Contents |
+|----------|----------|
+| `settings.json` | API Key and Base URL |
+| `history/` | Synthesis results (JSON metadata + WAV audio) |
+| `voice-queue/` | Temporary voice samples for pending jobs (auto-cleaned) |
+
+This directory is in `.gitignore` and will **never** be committed.
+
+---
+
+## 📄 License
 
 [MIT License](LICENSE)
 
-## Acknowledgements
+---
 
-- Voice synthesis powered by [Xiaomi MiMo](https://platform.xiaomimimo.com/) — thank you for providing the TTS API.
+## 🙏 Acknowledgements
+
+Voice synthesis powered by [Xiaomi MiMo](https://platform.xiaomimimo.com/) — thank you for providing the TTS API.
