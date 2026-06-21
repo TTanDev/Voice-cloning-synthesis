@@ -19,6 +19,7 @@ const settingsNote = document.querySelector("#settingsNote");
 const stylePrompt = document.querySelector("#stylePrompt");
 const styleButtons = document.querySelectorAll("[data-style-prompt]");
 const historyList = document.querySelector("#historyList");
+const themeToggle = document.querySelector("#themeToggle");
 const enableNotifications = document.querySelector("#enableNotifications");
 const selectAllJobs = document.querySelector("#selectAllJobs");
 const batchBar = document.querySelector("#batchBar");
@@ -28,12 +29,14 @@ const confirmModal = document.querySelector("#confirmModal");
 const confirmMsg = document.querySelector("#confirmMsg");
 const confirmOk = document.querySelector("#confirmOk");
 const confirmCancel = document.querySelector("#confirmCancel");
+const synthesisText = form.elements.text;
 
 let currentAudioUrl = "";
 let activeJobId = "";
 let pollTimer = null;
 let historyInitialized = false;
 let pendingDeleteIds = null;
+let currentTheme = localStorage.getItem("mimo-theme") || "light";
 const knownStatuses = new Map();
 const selectedJobs = new Set();
 const audioUrlCache = new Map();
@@ -998,6 +1001,7 @@ const translations = {
     styleHelperNote: "也可以在合成文本开头加标签，例如：（开心）今天真的太棒了！ 或 [轻笑] 没想到你还记得。",
     synthTextLabel: "合成文本",
     synthTextPlaceholder: "请输入要合成的文本，可加入风格标签和音频标签。",
+    synthTextDefault: "(温柔 磁性)夜已经深了，城市还在呼吸。[轻笑] 没想到你还记得这件事。\n\n这么多年过去了，[叹气] 再走过那条街，心里一下子空了一块。",
     submitBtn: "提交到合成队列",
     submitting: "提交中...",
     taskTitle: "当前任务",
@@ -1024,6 +1028,8 @@ const translations = {
     notifBtnUnsupported: "浏览器不支持通知",
     notifDesc: "点击按钮即可获取浏览器通知权限，在合成任务成功或失败时，可以及时通知你。",
     settingsNote: "保存后会写入本机用户目录，不会在前端接口中返回明文 Key。",
+    themeToDark: "切换深色主题",
+    themeToLight: "切换浅色主题",
     cancelBtn: "取消",
     saveBtn: "保存设置",
     confirmDelete: "确认删除",
@@ -1083,6 +1089,7 @@ const translations = {
     styleHelperNote: 'You can also add tags in text, e.g.: (happy) What a great day! or [chuckle] I didn\'t expect that.',
     synthTextLabel: "Synthesis Text",
     synthTextPlaceholder: "Enter text to synthesize. You can add style and audio tags.",
+    synthTextDefault: "(gentle, magnetic) The night has grown deep, and the city is still breathing. [chuckle] I didn't expect you to remember this.\n\nAfter all these years, [sigh] walking down that street again made a hollow place open up inside me.",
     submitBtn: "Submit to Queue",
     submitting: "Submitting...",
     taskTitle: "Current Task",
@@ -1109,6 +1116,8 @@ const translations = {
     notifBtnUnsupported: "Browser Not Supported",
     notifDesc: "Click to enable browser notifications — you'll be alerted when synthesis tasks succeed or fail.",
     settingsNote: "Saved locally. The plain-text key is never returned to the frontend.",
+    themeToDark: "Switch to dark theme",
+    themeToLight: "Switch to light theme",
     cancelBtn: "Cancel",
     saveBtn: "Save Settings",
     confirmDelete: "Confirm Delete",
@@ -1152,6 +1161,27 @@ let currentLang = localStorage.getItem("mimo-lang") || "zh";
 
 function t(key) { return translations[currentLang][key] || translations.zh[key] || key; }
 
+function updateThemeButton() {
+  if (!themeToggle) return;
+  const label = currentTheme === "dark" ? t("themeToLight") : t("themeToDark");
+  themeToggle.title = label;
+  themeToggle.setAttribute("aria-label", label);
+}
+
+function applyTheme(theme) {
+  currentTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = currentTheme;
+  localStorage.setItem("mimo-theme", currentTheme);
+  updateThemeButton();
+}
+
+function updateSynthesisDefaultText(lang) {
+  const defaultTexts = Object.values(translations).map((translation) => translation.synthTextDefault);
+  if (synthesisText && defaultTexts.includes(synthesisText.value)) {
+    synthesisText.value = translations[lang].synthTextDefault;
+  }
+}
+
 function switchLanguage(lang) {
   currentLang = lang;
   localStorage.setItem("mimo-lang", lang);
@@ -1167,14 +1197,17 @@ function switchLanguage(lang) {
     const key = el.getAttribute("data-i18n-html");
     if (translations[lang][key] !== undefined) el.innerHTML = translations[lang][key];
   });
+  updateSynthesisDefaultText(lang);
   const langBtn = document.querySelector("#langToggle");
   if (langBtn) langBtn.textContent = lang === "zh" ? "EN" : "中";
+  updateThemeButton();
   updateNotificationButton();
   renderHistory(lastJobsSnapshot);
 }
 
 const langToggle = document.querySelector("#langToggle");
 
+applyTheme(currentTheme);
 loadSettings();
 updateNotificationButton();
 requestAnimationFrame(() => renderWaveform());
@@ -1186,6 +1219,10 @@ loadJobs().then(() => {
 
 langToggle.addEventListener("click", () => {
   switchLanguage(currentLang === "zh" ? "en" : "zh");
+});
+
+themeToggle.addEventListener("click", () => {
+  applyTheme(currentTheme === "dark" ? "light" : "dark");
 });
 
 // Apply saved language on load

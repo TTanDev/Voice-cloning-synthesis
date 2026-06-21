@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MiMo 声音复刻合成</title>
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem("mimo-theme") || "light";
+  </script>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -14,6 +17,15 @@
         <p data-i18n="subtitle">上传 mp3、wav 或 m4a 声音样本，输入文本，生成复刻音色的 wav 音频。</p>
       </div>
       <div class="top-actions">
+        <button class="theme-button" id="themeToggle" type="button" title="切换深色主题" aria-label="切换深色主题">
+          <svg class="theme-icon sun-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.5"></circle>
+            <path d="M12 2.5v2.2M12 19.3v2.2M4.7 4.7l1.6 1.6M17.7 17.7l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.7 19.3l1.6-1.6M17.7 6.3l1.6-1.6"></path>
+          </svg>
+          <svg class="theme-icon moon-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20.2 15.1A7.7 7.7 0 0 1 8.9 3.8 8.8 8.8 0 1 0 20.2 15.1Z"></path>
+          </svg>
+        </button>
         <button class="lang-button" id="langToggle" type="button" title="Switch Language">EN</button>
         <button class="settings-button" id="openSettings" type="button" title="打开设置">
           <span>⚙</span>
@@ -188,6 +200,7 @@
       <label class="field">
         <span data-i18n="apiKeyLabel">MiMo API Key</span>
         <input id="apiKey" name="apiKey" type="password" autocomplete="off" data-i18n-placeholder="apiKeyPlaceholder" placeholder="请输入 MiMo API Key" />
+        <div class="settings-note" id="settingsNote" data-i18n="settingsNote">保存后会写入本机用户目录，不会在前端接口中返回明文 Key。</div>
       </label>
 
       <label class="field">
@@ -199,8 +212,6 @@
         <button class="secondary-button" id="enableNotifications" type="button" data-i18n="notifBtn">获取通知权限</button>
         <p class="notification-desc" data-i18n="notifDesc">点击按钮即可获取浏览器通知权限，在合成任务成功或失败时，可以及时通知你。</p>
       </div>
-
-      <div class="settings-note" id="settingsNote" data-i18n="settingsNote">保存后会写入本机用户目录，不会在前端接口中返回明文 Key。</div>
 
       <div class="modal-actions">
         <button class="secondary-button" id="cancelSettings" type="button" data-i18n="cancelBtn">取消</button>
