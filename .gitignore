@@ -1,0 +1,27 @@
+# Runtime data (contains API keys and synthesis history)
+.mimo-voiceclone/
+
+# Temporary voice sample queue
+voice-queue/
+
+# Maven build output
+target/
+
+# Dev tool artifacts
+.superpowers/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
