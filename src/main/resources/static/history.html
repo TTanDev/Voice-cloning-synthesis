@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>历史合成结果 - MiMo 声音复刻合成</title>
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem("mimo-theme") || "light";
+  </script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app history-page">
+    <header class="topbar">
+      <div>
+        <h1 data-i18n="historyPageTitle">历史合成结果</h1>
+        <p data-i18n="historyPageDesc">集中管理已经收进历史的合成音频，可按文本、文件名和分组搜索。</p>
+      </div>
+      <div class="top-actions">
+        <button class="lang-button" id="langToggle" type="button" title="Switch Language">EN</button>
+        <a class="secondary-button nav-button" href="/">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-7h6v7"/></svg>
+          <span data-i18n="backHome">返回合成页面</span>
+        </a>
+        <a class="secondary-button nav-button" href="/characters">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <span data-i18n="manageCharacters">管理角色</span>
+        </a>
+        <div class="model-pill">mimo-v2.5-tts-voiceclone</div>
+      </div>
+    </header>
+
+    <section class="panel history-manager">
+      <div class="history-toolbar">
+        <label class="field">
+          <span data-i18n="searchLabel">搜索</span>
+          <input id="historySearch" data-i18n-placeholder="searchPlaceholder" placeholder="输入文本、文件名或分组，实时搜索" autocomplete="off" />
+        </label>
+        <div class="field">
+          <span data-i18n="groupLabel">分组</span>
+          <div class="filter-chip-row" id="historyGroupFilter"></div>
+        </div>
+        <div class="field">
+          <span data-i18n="statusLabel">状态</span>
+          <div class="filter-chip-row" id="historyStatusFilter"></div>
+        </div>
+      </div>
+      <div class="history-stats-row">
+        <div class="history-stats" id="historyStats"></div>
+        <label class="select-all-wrap">
+          <input type="checkbox" id="historySelectAll" />
+          <span data-i18n="selectAll">全选</span>
+        </label>
+      </div>
+      <div class="batch-bar" id="historyBatchBar">
+        <span id="historyBatchCount" data-i18n="batchCount">已选 0 项</span>
+        <div class="batch-actions">
+          <button type="button" class="batch-download-btn" id="historyBatchDownloadBtn" data-i18n="batchDownloadBtn">下载</button>
+          <button type="button" class="batch-archive-btn" id="historyBatchRestoreBtn" data-i18n="batchRestoreBtn">移回</button>
+          <button type="button" class="batch-delete-btn" id="historyBatchDeleteBtn" data-i18n="batchDeleteBtn">删除选中</button>
+        </div>
+      </div>
+      <div class="history-manager-body">
+        <div class="history-list history-page-list" id="historyArchiveList">
+          <div class="empty-history">暂无历史合成结果。</div>
+        </div>
+        <aside class="history-player-side">
+          <div class="panel-head compact-panel-head">
+            <div>
+              <h2 data-i18n="synthAudioTitle">合成音频</h2>
+              <p id="historyPlayerStatus" data-i18n="historyPlayerIdle">选择一条历史结果播放。</p>
+            </div>
+          </div>
+          <div class="result-body">
+            <div id="historyWavePlayer" class="wave-player-root"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <dialog class="confirm-modal" id="confirmModal">
+    <div class="confirm-card">
+      <p class="confirm-msg" id="confirmMsg"></p>
+      <div class="confirm-actions">
+        <button type="button" class="secondary-button" id="confirmCancel" data-i18n="cancelBtn">取消</button>
+        <button type="button" class="primary-button confirm-danger" id="confirmOk" data-i18n="confirmDelete">确认删除</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/audio-wave-player.js"></script>
+  <script src="/history.js"></script>
+</body>
+</html>

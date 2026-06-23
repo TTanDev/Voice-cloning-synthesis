@@ -1,11 +1,14 @@
 const form = document.querySelector("#synthesisForm");
-const voiceFile = document.querySelector("#voiceFile");
-const fileName = document.querySelector("#fileName");
-const dropZone = document.querySelector("#dropZone");
+const characterOptions = document.querySelector("#characterOptions");
+const selectedCharacterText = document.querySelector("#selectedCharacterText");
 const submitButton = document.querySelector("#submitButton");
 const statusText = document.querySelector("#statusText");
 const keyState = document.querySelector("#keyState");
-const audioPlayer = document.querySelector("#audioPlayer");
+const tagGuideTemplate = document.querySelector("#tagGuideTemplate");
+const mainWavePlayer = window.createWavePlayer("#mainWavePlayer", {
+  defaultText: tagGuideTemplate ? tagGuideTemplate.innerHTML : "",
+  onBeforePlay: async (jobId) => markJobRead(jobId)
+});
 const downloadLink = document.querySelector("#downloadLink");
 const clearButton = document.querySelector("#clearButton");
 const settingsModal = document.querySelector("#settingsModal");
@@ -24,15 +27,30 @@ const enableNotifications = document.querySelector("#enableNotifications");
 const selectAllJobs = document.querySelector("#selectAllJobs");
 const batchBar = document.querySelector("#batchBar");
 const batchCount = document.querySelector("#batchCount");
+const batchDownloadBtn = document.querySelector("#batchDownloadBtn");
+const batchArchiveBtn = document.querySelector("#batchArchiveBtn");
 const batchDeleteBtn = document.querySelector("#batchDeleteBtn");
 const confirmModal = document.querySelector("#confirmModal");
 const confirmMsg = document.querySelector("#confirmMsg");
 const confirmOk = document.querySelector("#confirmOk");
 const confirmCancel = document.querySelector("#confirmCancel");
+const archiveModal = document.querySelector("#archiveModal");
+const archiveForm = document.querySelector("#archiveForm");
+const archiveJobId = document.querySelector("#archiveJobId");
+const archiveGroupSelect = document.querySelector("#archiveGroupSelect");
+const archiveGroupCustom = document.querySelector("#archiveGroupCustom");
+const archiveGroupButton = document.querySelector("#archiveGroupButton");
+const archiveGroupLabelText = document.querySelector("#archiveGroupLabelText");
+const archiveGroupMenu = document.querySelector("#archiveGroupMenu");
+const archiveGroupInput = document.querySelector("#archiveGroupInput");
+const archiveCancel = document.querySelector("#archiveCancel");
 const synthesisText = form.elements.text;
 
 let currentAudioUrl = "";
+let currentAudioJobId = "";
 let activeJobId = "";
+let selectedCharacterId = "";
+let charactersSnapshot = [];
 let pollTimer = null;
 let historyInitialized = false;
 let pendingDeleteIds = null;
@@ -41,18 +59,7 @@ const knownStatuses = new Map();
 const selectedJobs = new Set();
 const audioUrlCache = new Map();
 const durationCache = new Map();
-
-const waveContainer = document.querySelector("#waveContainer");
-const waveCanvas = document.querySelector("#waveCanvas");
-const customPlayer = document.querySelector("#customPlayer");
-const playerPlayBtn = document.querySelector("#playerPlayBtn");
-const playerPlayIcon = document.querySelector("#playerPlayIcon");
-const playerPauseIcon = document.querySelector("#playerPauseIcon");
-const playerProgress = document.querySelector("#playerProgress");
-const playerProgressFill = document.querySelector("#playerProgressFill");
-const playerTime = document.querySelector("#playerTime");
-const playerText = document.querySelector("#playerText");
-const defaultPlayerTextHtml = playerText ? playerText.innerHTML : "";
+const LAST_ARCHIVE_GROUP_KEY = "mimo-last-archive-group";
 
 let waveAudioContext = null;
 let wavePeaks = null;
@@ -96,13 +103,12 @@ function setSteps(activeStep) {
 }
 
 function resetAudio() {
-  clearWaveform();
+  mainWavePlayer.clear();
   if (currentAudioUrl && !Array.from(audioUrlCache.values()).includes(currentAudioUrl)) {
     URL.revokeObjectURL(currentAudioUrl);
   }
   currentAudioUrl = "";
-  audioPlayer.removeAttribute("src");
-  audioPlayer.load();
+  currentAudioJobId = "";
   downloadLink.removeAttribute("href");
   downloadLink.setAttribute("download", "mimo-voiceclone.wav");
   downloadLink.classList.add("disabled");
@@ -115,8 +121,40 @@ function buildDownloadFileName(text) {
 }
 
 function updateFileName() {
-  const file = voiceFile.files[0];
-  fileName.textContent = file ? file.name : t("uploadDefault");
+  // Legacy upload flow kept for backward compatibility. The main page now selects characters.
+}
+
+async function loadCharacters() {
+  try {
+    const response = await fetch("/api/characters");
+    const characters = await response.json();
+    if (!response.ok) {
+      throw new Error(characters.error || t("charactersLoadFailed"));
+    }
+    charactersSnapshot = characters;
+    renderCharacters(characters);
+  } catch (error) {
+    characterOptions.innerHTML = `<div class="empty-history">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function renderCharacters(characters) {
+  if (!characters.length) {
+    selectedCharacterId = "";
+    selectedCharacterText.textContent = t("noCharactersHint");
+    characterOptions.innerHTML = `<div class="empty-history">${t("noCharacters")}</div>`;
+    return;
+  }
+  if (!selectedCharacterId || !characters.some((character) => character.id === selectedCharacterId)) {
+    selectedCharacterId = characters[0].id;
+  }
+  const selected = characters.find((character) => character.id === selectedCharacterId);
+  selectedCharacterText.textContent = selected ? `${t("selectedCharacter")}: ${selected.name}` : t("characterPickerHint");
+  characterOptions.innerHTML = characters.map((character) => `
+    <button type="button" class="character-option ${character.id === selectedCharacterId ? "selected" : ""}" data-character-id="${escapeHtml(character.id)}">
+      <b>${escapeHtml(character.name)}</b>
+    </button>
+  `).join("");
 }
 
 async function prepareVoiceFile(file) {
@@ -405,9 +443,8 @@ async function saveSettings(event) {
 
 async function submitSynthesis(event) {
   event.preventDefault();
-  const file = voiceFile.files[0];
-  if (!file) {
-    setStatus(t("uploadHint"), "error");
+  if (!selectedCharacterId) {
+    setStatus(t("selectCharacterFirst"), "error");
     return;
   }
 
@@ -417,15 +454,14 @@ async function submitSynthesis(event) {
   setSteps("request");
 
   try {
-    const preparedFile = await prepareVoiceFile(file);
-    const formData = new FormData();
-    formData.append("voiceFile", preparedFile);
-    formData.append("stylePrompt", form.elements.stylePrompt.value);
-    formData.append("text", form.elements.text.value);
-
     const response = await fetch("/api/synthesize/jobs", {
       method: "POST",
-      body: formData
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        characterId: selectedCharacterId,
+        stylePrompt: form.elements.stylePrompt.value,
+        text: form.elements.text.value
+      })
     });
     const data = await response.json();
     if (!response.ok) {
@@ -465,10 +501,11 @@ function stopPollingIfIdle(jobs) {
 async function loadJobs() {
   try {
     const response = await fetch("/api/synthesize/jobs");
-    const jobs = await response.json();
+    const allJobs = await response.json();
     if (!response.ok) {
-      throw new Error(jobs.error || t("loadHistoryFailed"));
+      throw new Error(allJobs.error || t("loadHistoryFailed"));
     }
+    const jobs = allJobs.filter((job) => !job.archived);
     handleStatusTransitions(jobs);
     lastJobsSnapshot = jobs;
     renderHistory(jobs);
@@ -514,7 +551,7 @@ function updateActiveJob(jobs) {
   if (job.status === "SUCCEEDED") {
     setSteps("done");
     setStatus(`${t("synthComplete")}: ${textPreview(job.text)}。${formatDuration(job.mimoElapsedMillis)}`);
-    playJob(job.id, job.text);
+    previewJob(job.id, job.text);
     activeJobId = "";
   }
   if (job.status === "FAILED") {
@@ -530,20 +567,26 @@ function renderHistory(jobs) {
   updateSelectAllCheckbox(jobs);
 
   if (!jobs.length) {
-    historyList.innerHTML = `<div class="empty-history">${t("noHistory")}</div>`;
+    historyList.innerHTML = `<div class="empty-history">${t("noResults")}</div>`;
     return;
   }
 
   historyList.innerHTML = jobs.map((job) => {
     const canUseAudio = job.status === "SUCCEEDED";
+    const canArchive = job.status === "SUCCEEDED";
     const checked = selectedJobs.has(job.id);
+    const itemClass = [
+      "history-item",
+      job.status === "RUNNING" ? "is-running" : "",
+      job.status === "SUCCEEDED" && !job.read ? "is-unread" : ""
+    ].filter(Boolean).join(" ");
     const meta = [
       escapeHtml(new Date(job.createdAt).toLocaleString()),
       canUseAudio ? `<span data-duration-job-id="${escapeHtml(job.id)}">${t("readingDuration")}</span>` : "",
-      escapeHtml(job.originalFilename)
+      `${t("characterLabel")}: ${escapeHtml(job.characterName || t("noCharacter"))}`
     ].filter(Boolean).join(" · ");
     return `
-      <article class="history-item" data-job-id="${escapeHtml(job.id)}">
+      <article class="${itemClass}" data-job-id="${escapeHtml(job.id)}">
         <div class="history-item-main">
           <input type="checkbox" class="history-checkbox" data-job-id="${escapeHtml(job.id)}" ${checked ? "checked" : ""} />
           <div class="history-item-body">
@@ -556,6 +599,7 @@ function renderHistory(jobs) {
             <div class="history-actions">
               <button type="button" data-action="play" data-job-id="${escapeHtml(job.id)}" data-job-text="${escapeHtml(job.text)}" class="${canUseAudio ? "" : "disabled"}">${t("play")}</button>
               <button type="button" data-action="download" data-job-id="${escapeHtml(job.id)}" data-job-text="${escapeHtml(job.text)}" class="${canUseAudio ? "" : "disabled"}">${t("download")}</button>
+              <button type="button" data-action="archive" data-job-id="${escapeHtml(job.id)}" class="${canArchive ? "" : "disabled"}">${t("archive")}</button>
             </div>
             <button type="button" class="history-delete-btn" data-action="delete" data-job-id="${escapeHtml(job.id)}">${t("delete")}</button>
           </div>
@@ -571,7 +615,8 @@ async function playJob(jobId, text) {
   if (!url) {
     return;
   }
-  setCurrentAudio(url, text);
+  await markJobRead(jobId);
+  setCurrentAudio(url, text, jobId);
 }
 
 async function downloadJob(jobId, text) {
@@ -579,12 +624,154 @@ async function downloadJob(jobId, text) {
   if (!url) {
     return;
   }
+  await markJobRead(jobId);
   const link = document.createElement("a");
   link.href = url;
   link.download = buildDownloadFileName(text);
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+async function previewJob(jobId, text) {
+  const url = await getJobAudioUrl(jobId);
+  if (!url) {
+    return;
+  }
+  setCurrentAudio(url, text, jobId);
+}
+
+async function markJobRead(jobId) {
+  const job = lastJobsSnapshot.find((item) => item.id === jobId);
+  if (!job || job.read) {
+    return;
+  }
+  try {
+    const response = await fetch(`/api/synthesize/jobs/${encodeURIComponent(jobId)}/read`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ read: true })
+    });
+    if (!response.ok) {
+      return;
+    }
+    job.read = true;
+    const item = historyList.querySelector(`[data-job-id="${CSS.escape(jobId)}"]`);
+    if (item) {
+      item.classList.remove("is-unread");
+    }
+  } catch (error) {
+    // Reading is a convenience state; playback/download should not fail because it cannot be stored.
+  }
+}
+
+async function loadArchiveGroups() {
+  try {
+    const response = await fetch("/api/synthesize/groups");
+    const groups = await response.json();
+    renderArchiveGroupOptions(groups);
+  } catch (error) {
+    renderArchiveGroupOptions([]);
+  }
+}
+
+function getLastArchiveGroup() {
+  return localStorage.getItem(LAST_ARCHIVE_GROUP_KEY) || "";
+}
+
+function setArchiveGroupValue(value) {
+  archiveGroupSelect.value = value || "";
+  archiveGroupLabelText.textContent = value || t("archiveNoGroup");
+}
+
+function renderArchiveGroupOptions(groups) {
+  const uniqueGroups = Array.from(new Set(groups.filter(Boolean)));
+  const lastGroup = getLastArchiveGroup();
+  const values = ["", ...uniqueGroups];
+  const preferredValue = values.includes(lastGroup) ? lastGroup : "";
+  setArchiveGroupValue(preferredValue);
+  archiveGroupMenu.innerHTML = values.map((value) => {
+    const label = value || t("archiveNoGroup");
+    const isSelected = value === preferredValue;
+    const isLast = value && value === lastGroup;
+    return `
+      <button type="button" class="archive-select-option${isSelected ? " selected" : ""}" role="option" aria-selected="${isSelected}" data-value="${escapeHtml(value)}">
+        <span>${escapeHtml(label)}</span>
+        ${isLast ? `<small>${t("lastArchiveChoice")}</small>` : ""}
+      </button>
+    `;
+  }).join("");
+}
+
+function toggleArchiveMenu(open) {
+  const nextOpen = typeof open === "boolean" ? open : !archiveGroupCustom.classList.contains("open");
+  archiveGroupCustom.classList.toggle("open", nextOpen);
+  archiveGroupButton.setAttribute("aria-expanded", String(nextOpen));
+}
+
+async function openArchiveModal(jobId) {
+  archiveJobId.value = jobId;
+  archiveGroupInput.value = "";
+  await loadArchiveGroups();
+  archiveModal.showModal();
+}
+
+async function archiveJob(event) {
+  event.preventDefault();
+  const jobIds = archiveJobId.value.split(",").map((id) => id.trim()).filter(Boolean);
+  const newGroupName = archiveGroupInput.value.trim();
+  const existingGroupName = archiveGroupSelect.value.trim();
+  const groupName = newGroupName || existingGroupName;
+  try {
+    await Promise.all(jobIds.map(async (jobId) => {
+      const response = await fetch(`/api/synthesize/jobs/${encodeURIComponent(jobId)}/archive`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: true, groupName })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || t("archiveFailed"));
+      }
+      selectedJobs.delete(jobId);
+    }));
+    if (newGroupName) {
+      localStorage.removeItem(LAST_ARCHIVE_GROUP_KEY);
+    } else if (existingGroupName) {
+      localStorage.setItem(LAST_ARCHIVE_GROUP_KEY, existingGroupName);
+    }
+    archiveModal.close();
+    setStatus(jobIds.length > 1 ? t("batchArchived").replace("{n}", jobIds.length) : t("archived"));
+    await loadJobs();
+  } catch (error) {
+    setStatus(error.message || t("archiveFailed"), "error");
+  }
+}
+
+function batchArchiveJobs() {
+  const ids = [...selectedJobs].filter((id) => {
+    const job = lastJobsSnapshot.find((item) => item.id === id);
+    return job && job.status === "SUCCEEDED";
+  });
+  if (!ids.length) {
+    setStatus(t("batchArchiveNoEligible"), "error");
+    return;
+  }
+  openArchiveModal(ids.join(","));
+}
+
+async function batchDownloadJobs() {
+  const jobs = [...selectedJobs]
+    .map((id) => lastJobsSnapshot.find((item) => item.id === id))
+    .filter((job) => job && job.status === "SUCCEEDED");
+  if (!jobs.length) {
+    setStatus(t("batchDownloadNoEligible"), "error");
+    return;
+  }
+  for (const job of jobs) {
+    await downloadJob(job.id, job.text);
+  }
+  setStatus(t("batchDownloaded").replace("{n}", jobs.length));
 }
 
 async function deleteJob(jobId) {
@@ -737,18 +924,13 @@ async function hydrateHistoryDurations(jobs) {
   }));
 }
 
-function setCurrentAudio(url, text) {
+function setCurrentAudio(url, text, jobId = "") {
   currentAudioUrl = url;
-  audioPlayer.src = url;
+  currentAudioJobId = jobId;
   downloadLink.href = url;
   downloadLink.setAttribute("download", buildDownloadFileName(text));
   downloadLink.classList.remove("disabled");
-  playerPlayIcon.style.display = "";
-  playerPauseIcon.style.display = "none";
-  playerProgressFill.style.width = "0%";
-  playerTime.textContent = "0:00";
-  playerText.textContent = text || "";
-  loadAndDrawWaveform(url);
+  mainWavePlayer.setSource(url, text, jobId);
 }
 
 async function requestNotifications() {
@@ -795,15 +977,43 @@ function notify(message) {
   });
 }
 
-voiceFile.addEventListener("change", updateFileName);
 form.addEventListener("submit", submitSynthesis);
+characterOptions.addEventListener("click", (event) => {
+  const option = event.target.closest(".character-option");
+  if (!option) {
+    return;
+  }
+  selectedCharacterId = option.dataset.characterId;
+  renderCharacters(charactersSnapshot);
+});
 settingsForm.addEventListener("submit", saveSettings);
+archiveForm.addEventListener("submit", archiveJob);
 openSettings.addEventListener("click", () => {
   updateNotificationButton();
   settingsModal.showModal();
 });
 closeSettings.addEventListener("click", () => settingsModal.close());
 cancelSettings.addEventListener("click", () => settingsModal.close());
+archiveCancel.addEventListener("click", () => archiveModal.close());
+archiveGroupButton.addEventListener("click", () => toggleArchiveMenu());
+archiveGroupMenu.addEventListener("click", (event) => {
+  const option = event.target.closest(".archive-select-option");
+  if (!option) {
+    return;
+  }
+  setArchiveGroupValue(option.dataset.value || "");
+  archiveGroupMenu.querySelectorAll(".archive-select-option").forEach((item) => {
+    const selected = item === option;
+    item.classList.toggle("selected", selected);
+    item.setAttribute("aria-selected", String(selected));
+  });
+  toggleArchiveMenu(false);
+});
+document.addEventListener("click", (event) => {
+  if (archiveGroupCustom && !archiveGroupCustom.contains(event.target)) {
+    toggleArchiveMenu(false);
+  }
+});
 enableNotifications.addEventListener("click", requestNotifications);
 clearButton.addEventListener("click", () => {
   resetAudio();
@@ -823,6 +1033,9 @@ historyList.addEventListener("click", (event) => {
     }
     if (button.dataset.action === "delete") {
       deleteJob(button.dataset.jobId);
+    }
+    if (button.dataset.action === "archive") {
+      openArchiveModal(button.dataset.jobId);
     }
     return;
   }
@@ -851,6 +1064,8 @@ selectAllJobs.addEventListener("change", () => {
 });
 
 batchDeleteBtn.addEventListener("click", () => batchDeleteJobs());
+batchArchiveBtn.addEventListener("click", () => batchArchiveJobs());
+batchDownloadBtn.addEventListener("click", () => batchDownloadJobs());
 
 confirmOk.addEventListener("click", () => {
   confirmModal.close();
@@ -880,101 +1095,9 @@ styleButtons.forEach((button) => {
   });
 });
 
-["dragenter", "dragover"].forEach((eventName) => {
-  dropZone.addEventListener(eventName, () => dropZone.classList.add("dragging"));
-});
-
-["dragleave", "drop"].forEach((eventName) => {
-  dropZone.addEventListener(eventName, () => dropZone.classList.remove("dragging"));
-});
-
-dropZone.addEventListener("drop", (event) => {
-  const files = event.dataTransfer?.files;
-  if (!files || files.length === 0) {
-    return;
-  }
-  voiceFile.files = files;
-  updateFileName();
-});
-
-audioPlayer.addEventListener("play", () => {
-  playerPlayIcon.style.display = "none";
-  playerPauseIcon.style.display = "";
-  if (wavePeaks) {
-    waveAnimFrame = requestAnimationFrame(updatePlayhead);
-  }
-});
-
-audioPlayer.addEventListener("pause", () => {
-  playerPlayIcon.style.display = "";
-  playerPauseIcon.style.display = "none";
-  if (waveAnimFrame) {
-    cancelAnimationFrame(waveAnimFrame);
-    waveAnimFrame = null;
-  }
-});
-
-audioPlayer.addEventListener("ended", () => {
-  playerPlayIcon.style.display = "";
-  playerPauseIcon.style.display = "none";
-  if (waveAnimFrame) {
-    cancelAnimationFrame(waveAnimFrame);
-    waveAnimFrame = null;
-  }
-  renderWaveform(0);
-  playerProgressFill.style.width = "0%";
-  playerTime.textContent = formatAudioDuration(audioPlayer.duration) || "0:00";
-});
-
-audioPlayer.addEventListener("timeupdate", () => {
-  if (wavePeaks && audioPlayer.duration && !waveAnimFrame) {
-    const progress = audioPlayer.currentTime / audioPlayer.duration;
-    renderWaveform(progress);
-    playerProgressFill.style.width = (progress * 100) + "%";
-    playerTime.textContent = formatAudioDuration(audioPlayer.currentTime);
-  }
-});
-
-playerPlayBtn.addEventListener("click", () => {
-  if (!audioPlayer.src) return;
-  if (audioPlayer.paused) {
-    audioPlayer.play();
-  } else {
-    audioPlayer.pause();
-  }
-});
-
-let progressDragging = false;
-
-function seekToProgress(event) {
-  if (!audioPlayer.duration) return;
-  const rect = playerProgress.getBoundingClientRect();
-  const progress = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-  audioPlayer.currentTime = progress * audioPlayer.duration;
-  renderWaveform(progress);
-  playerProgressFill.style.width = (progress * 100) + "%";
-}
-
-playerProgress.addEventListener("mousedown", (event) => {
-  progressDragging = true;
-  seekToProgress(event);
-});
-
-window.addEventListener("mousemove", (event) => {
-  if (progressDragging) {
-    seekToProgress(event);
-  }
-});
-
-window.addEventListener("mouseup", () => {
-  progressDragging = false;
-});
-
-window.addEventListener("resize", () => {
-  if (wavePeaks && audioPlayer.duration) {
-    renderWaveform(audioPlayer.currentTime / audioPlayer.duration);
-  } else {
-    renderWaveform();
+downloadLink.addEventListener("click", () => {
+  if (currentAudioJobId && !downloadLink.classList.contains("disabled")) {
+    markJobRead(currentAudioJobId);
   }
 });
 
@@ -991,6 +1114,18 @@ const translations = {
     uploadDefault: "选择或拖入声音样本",
     uploadHint: "支持 mp3 / wav / m4a，Base64 编码后不超过 10 MB。",
     chooseFile: "选择文件",
+    characterPickerTitle: "选择角色",
+    characterPickerHint: "请选择一个已创建的声音角色。",
+    manageCharacters: "管理角色",
+    charactersLoading: "正在读取角色...",
+    charactersLoadFailed: "读取角色失败",
+    noCharacters: "还没有角色，请先创建角色。",
+    noCharactersHint: "还没有角色，请先创建角色。",
+    selectedCharacter: "当前角色",
+    selectCharacterFirst: "请先选择一个角色。",
+    characterSample: "角色样本",
+    characterLabel: "角色",
+    noCharacter: "无角色",
     stylePromptLabel: "风格指令",
     stylePromptPlaceholder: "例如：温柔、自然、语速适中，像在给朋友讲解。",
     outputFormatLabel: "输出格式",
@@ -1012,9 +1147,12 @@ const translations = {
     tagGuide: '<div class="guide-title">标签用法速查</div><div class="guide-section"><div class="guide-heading">风格标签 <span class="guide-desc">放在文本开头，控制整体语气</span></div><div class="guide-row"><span class="guide-label">格式</span>(关键词)文本 支持 () （） [] 可叠加</div><div class="guide-row"><span class="guide-label">情绪</span>开心 悲伤 愤怒 恐惧 惊讶 兴奋 委屈 平静 冷漠 · 怅然 欣慰 无奈 愧疚 释然 嫉妒 厌倦 忐忑 动情</div><div class="guide-row"><span class="guide-label">语调</span>温柔 高冷 活泼 严肃 慵懒 俏皮 深沉 干练 凌厉</div><div class="guide-row"><span class="guide-label">音色</span>磁性 醇厚 清亮 空灵 稚嫩 苍老 甜美 沙哑 醇雅</div><div class="guide-row"><span class="guide-label">腔调</span>夹子音 御姐音 正太音 大叔音 台湾腔</div><div class="guide-row"><span class="guide-label">方言</span>东北话 四川话 河南话 粤语</div><div class="guide-row"><span class="guide-label">特殊</span>唱歌（必须放在最开头）</div></div><div class="guide-section"><div class="guide-heading">音频标签 <span class="guide-desc">插在文本任意位置，控制细节表现</span></div><div class="guide-row"><span class="guide-label">格式</span>[关键词]</div><div class="guide-row"><span class="guide-label">呼吸</span>吸气 深呼吸 叹气 长叹一口气 喘息 屏息</div><div class="guide-row"><span class="guide-label">情绪</span>紧张 害怕 激动 疲惫 委屈 撒娇 心虚 震惊 不耐烦</div><div class="guide-row"><span class="guide-label">声音</span>颤抖 声音颤抖 变调 破音 鼻音 气声 沙哑</div><div class="guide-row"><span class="guide-label">哭笑</span>笑 轻笑 大笑 冷笑 抽泣 呜咽 哽咽 嚎啕大哭</div></div>',
     downloadWav: "下载 wav",
     clearBtn: "清空当前",
-    historyTitle: "历史合成结果",
-    historyDesc: "后台任务完成后会保存在本机历史中。",
+    historyTitle: "合成结果",
+    historyDesc: "这里显示队列和未收进历史的合成结果。",
+    historyPageBtn: "历史合成结果",
     selectAll: "全选",
+    batchArchiveBtn: "收进历史",
+    batchDownloadBtn: "下载",
     batchDeleteBtn: "删除选中",
     emptyHistory: "暂无历史任务。",
     settingsTitle: "接口设置",
@@ -1038,12 +1176,27 @@ const translations = {
     statusSucceeded: "已完成", statusFailed: "失败",
     notifyTitle: "MiMo 声音复刻合成",
     synthComplete: "合成完成", synthFailed: "合成失败",
-    play: "播放", download: "下载", delete: "删除",
+    play: "播放", download: "下载", delete: "删除", archive: "收进历史",
     noHistory: "暂无历史任务。",
+    noResults: "暂无待处理的合成结果。",
     audioDuration: "音频",
     durationUnknown: "音频时长未知",
     confirmDeleteMsg: "确认删除这条合成记录？删除后无法恢复。",
     batchConfirmMsg: "确认删除选中的 {n} 条合成记录？删除后无法恢复。",
+    archiveTitle: "收进历史合成结果",
+    archiveDesc: "选择一个已有分组，或输入新分组名称。",
+    archiveGroupLabel: "已有分组",
+    archiveNewGroupLabel: "新分组",
+    archiveNewGroupPlaceholder: "例如：毕业答辩、短视频旁白",
+    archiveNoGroup: "未分组",
+    lastArchiveChoice: "上一次选择",
+    archiveSubmit: "确认收进历史",
+    archiveFailed: "收进历史失败",
+    archived: "已收进历史合成结果。",
+    batchArchived: "已将 {n} 条合成结果收进历史。",
+    batchArchiveNoEligible: "选中的记录里没有可收进历史的已完成结果。",
+    batchDownloaded: "已触发 {n} 条合成音频下载。",
+    batchDownloadNoEligible: "选中的记录里没有可下载的已完成音频。",
     convertingAudio: "正在将音频转为 24kHz 单声道 WAV…",
     preparingSubmit: "正在准备音频并提交到后台队列。",
     taskSubmitted: "任务已进入后台队列。你可以继续修改合成文本并提交下一条。",
@@ -1079,6 +1232,18 @@ const translations = {
     uploadDefault: "Select or drop a voice sample",
     uploadHint: "Supports mp3 / wav / m4a. Max 10 MB after Base64 encoding.",
     chooseFile: "Choose File",
+    characterPickerTitle: "Select Character",
+    characterPickerHint: "Choose a saved voice character.",
+    manageCharacters: "Manage Characters",
+    charactersLoading: "Loading characters...",
+    charactersLoadFailed: "Failed to load characters",
+    noCharacters: "No characters yet. Create one first.",
+    noCharactersHint: "No characters yet. Create one first.",
+    selectedCharacter: "Current character",
+    selectCharacterFirst: "Choose a character first.",
+    characterSample: "Character sample",
+    characterLabel: "Character",
+    noCharacter: "No character",
     stylePromptLabel: "Style Prompt",
     stylePromptPlaceholder: "e.g., gentle, natural, moderate pace, like explaining to a friend.",
     outputFormatLabel: "Output Format",
@@ -1100,9 +1265,12 @@ const translations = {
     tagGuide: '<div class="guide-title">Tag Reference</div><div class="guide-section"><div class="guide-heading">Style Tags <span class="guide-desc">At the start of text — controls overall tone</span></div><div class="guide-row"><span class="guide-label">Format</span>(keyword)text — supports () （） [] — stackable</div><div class="guide-row"><span class="guide-label">Emotion</span>Happy Sad Angry Fearful Surprised Excited Grievance Calm Indifferent · Wistful Relieved Helpless Guilty</div><div class="guide-row"><span class="guide-label">Tone</span>Gentle Cool Lively Serious Lazy Playful Deep Sharp Intense</div><div class="guide-row"><span class="guide-label">Timbre</span>Magnetic Rich Clear Ethereal Youthful Aged Sweet Husky Elegant</div><div class="guide-row"><span class="guide-label">Style</span>Cutesy Mature-boy Young-boy Deep-voice TW-accent</div><div class="guide-row"><span class="guide-label">Dialect</span>Northeastern Sichuan Henan Cantonese</div><div class="guide-row"><span class="guide-label">Special</span>Singing (must be at the very start)</div></div><div class="guide-section"><div class="guide-heading">Audio Tags <span class="guide-desc">Inserted anywhere in text — fine-grained control</span></div><div class="guide-row"><span class="guide-label">Format</span>[keyword]</div><div class="guide-row"><span class="guide-label">Breath</span>Inhale Deep-breath Sigh Long-sigh Pant Hold-breath</div><div class="guide-row"><span class="guide-label">Emotion</span>Nervous Scared Excited Exhausted Upset Cozy Guilty Shocked Impatient</div><div class="guide-row"><span class="guide-label">Voice</span>Tremble Shake Pitch-shift Crack Nasal Breathy Husky</div><div class="guide-row"><span class="guide-label">Laugh/Cry</span>Laugh Chuckle Guffaw Sneer Sob Whimper Choke Wail</div></div>',
     downloadWav: "Download wav",
     clearBtn: "Clear Current",
-    historyTitle: "Synthesis History",
-    historyDesc: "Completed tasks are saved locally on your machine.",
+    historyTitle: "Synthesis Results",
+    historyDesc: "Queue and results that have not been archived yet.",
+    historyPageBtn: "History",
     selectAll: "Select All",
+    batchArchiveBtn: "Archive",
+    batchDownloadBtn: "Download",
     batchDeleteBtn: "Delete Selected",
     emptyHistory: "No history yet.",
     settingsTitle: "API Settings",
@@ -1126,12 +1294,27 @@ const translations = {
     statusSucceeded: "Completed", statusFailed: "Failed",
     notifyTitle: "MiMo Voice Cloning",
     synthComplete: "Synthesis complete", synthFailed: "Synthesis failed",
-    play: "Play", download: "Download", delete: "Delete",
+    play: "Play", download: "Download", delete: "Delete", archive: "Archive",
     noHistory: "No history yet.",
+    noResults: "No active synthesis results.",
     audioDuration: "Audio",
     durationUnknown: "Duration unknown",
     confirmDeleteMsg: "Delete this synthesis record? This cannot be undone.",
     batchConfirmMsg: "Delete {n} selected records? This cannot be undone.",
+    archiveTitle: "Archive Synthesis Result",
+    archiveDesc: "Choose an existing group, or enter a new group name.",
+    archiveGroupLabel: "Existing Group",
+    archiveNewGroupLabel: "New Group",
+    archiveNewGroupPlaceholder: "e.g. Graduation, Short Video Voiceover",
+    archiveNoGroup: "Ungrouped",
+    lastArchiveChoice: "Last used",
+    archiveSubmit: "Archive",
+    archiveFailed: "Failed to archive",
+    archived: "Moved to synthesis history.",
+    batchArchived: "Archived {n} synthesis results.",
+    batchArchiveNoEligible: "No completed selected results can be archived.",
+    batchDownloaded: "Started {n} audio downloads.",
+    batchDownloadNoEligible: "No completed selected audio can be downloaded.",
     convertingAudio: "Converting audio to 24kHz mono WAV…",
     preparingSubmit: "Preparing audio and submitting to queue.",
     taskSubmitted: "Task queued. You can keep editing text and submit the next one.",
@@ -1185,6 +1368,8 @@ function updateSynthesisDefaultText(lang) {
 function switchLanguage(lang) {
   currentLang = lang;
   localStorage.setItem("mimo-lang", lang);
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  document.title = t("title");
   document.querySelectorAll("[data-i18n]").forEach(el => {
     const key = el.getAttribute("data-i18n");
     if (translations[lang][key] !== undefined) el.textContent = translations[lang][key];
@@ -1202,6 +1387,7 @@ function switchLanguage(lang) {
   if (langBtn) langBtn.textContent = lang === "zh" ? "EN" : "中";
   updateThemeButton();
   updateNotificationButton();
+  renderCharacters(charactersSnapshot);
   renderHistory(lastJobsSnapshot);
 }
 
@@ -1209,8 +1395,8 @@ const langToggle = document.querySelector("#langToggle");
 
 applyTheme(currentTheme);
 loadSettings();
+loadCharacters();
 updateNotificationButton();
-requestAnimationFrame(() => renderWaveform());
 loadJobs().then(() => {
   if (Array.from(knownStatuses.values()).some((status) => status === "QUEUED" || status === "RUNNING")) {
     startPolling();

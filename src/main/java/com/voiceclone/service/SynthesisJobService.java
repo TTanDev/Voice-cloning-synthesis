@@ -2,6 +2,7 @@ package com.voiceclone.service;
 
 import com.voiceclone.api.ApiException;
 import com.voiceclone.service.MimoVoiceCloneService.SynthesisResult;
+import com.voiceclone.service.CharacterService.VoiceCharacter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.Instant;
@@ -20,17 +21,24 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class SynthesisJobService {
+    private static final String CHARACTER_SAMPLE_FILENAME = "character-sample.wav";
+
     private static final Logger log = LoggerFactory.getLogger(SynthesisJobService.class);
 
     private final MimoVoiceCloneService voiceCloneService;
+    private final CharacterService characterService;
     private final ObjectMapper objectMapper;
     private final Path historyDir;
     private final Path voiceQueueDir;
     private final ExecutorService executorService;
     private final ConcurrentHashMap<String, SynthesisJob> jobs = new ConcurrentHashMap<>();
 
-    public SynthesisJobService(MimoVoiceCloneService voiceCloneService, ObjectMapper objectMapper) {
+    public SynthesisJobService(
+            MimoVoiceCloneService voiceCloneService,
+            CharacterService characterService,
+            ObjectMapper objectMapper) {
         this.voiceCloneService = voiceCloneService;
+        this.characterService = characterService;
         this.objectMapper = objectMapper;
         Path baseDir = Path.of(System.getProperty("user.dir"), ".mimo-voiceclone");
         this.historyDir = baseDir.resolve("history");
@@ -68,9 +76,26 @@ public class SynthesisJobService {
         }
     }
 
-    public SynthesisJob submit(byte[] voiceBytes, String originalFilename, String contentType, String text, String stylePrompt) {
+    public SynthesisJob submitWithCharacter(String characterId, String text, String stylePrompt) {
+        VoiceCharacter character = characterService.getCharacter(characterId);
+        return submitInternal(
+                characterService.getAudio(character.id()),
+                "audio/wav",
+                text,
+                stylePrompt,
+                character.id(),
+                character.name());
+    }
+
+    private SynthesisJob submitInternal(
+            byte[] voiceBytes,
+            String contentType,
+            String text,
+            String stylePrompt,
+            String characterId,
+            String characterName) {
         String id = UUID.randomUUID().toString();
-        SynthesisJob job = new SynthesisJob(id, text, stylePrompt, originalFilename, contentType);
+        SynthesisJob job = new SynthesisJob(id, text, stylePrompt, contentType, characterId, characterName);
         jobs.put(id, job);
         Path voicePath = voiceInputPath(id);
         try {
@@ -88,6 +113,20 @@ public class SynthesisJobService {
                 .sorted(Comparator.comparing(SynthesisJob::createdAt).reversed())
                 .map(SynthesisJobSummary::from)
                 .toList();
+    }
+
+    public List<String> listGroups() {
+        return jobs.values().stream()
+                .map(SynthesisJob::groupName)
+                .filter(groupName -> groupName != null && !groupName.isBlank())
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+    }
+
+    public boolean isCharacterReferenced(String characterId) {
+        return jobs.values().stream()
+                .anyMatch(job -> characterId != null && characterId.equals(job.characterId()));
     }
 
     public SynthesisJob getJob(String id) {
@@ -136,6 +175,20 @@ public class SynthesisJobService {
         return deleted;
     }
 
+    public SynthesisJob updateArchive(String id, boolean archived, String groupName) {
+        SynthesisJob job = getJob(id);
+        job.setArchiveState(archived, groupName);
+        persistJob(job);
+        return job;
+    }
+
+    public SynthesisJob updateRead(String id, boolean read) {
+        SynthesisJob job = getJob(id);
+        job.setRead(read);
+        persistJob(job);
+        return job;
+    }
+
     private void deleteQuietly(Path path) {
         try {
             Files.deleteIfExists(path);
@@ -150,7 +203,7 @@ public class SynthesisJobService {
             byte[] voiceBytes = Files.readAllBytes(voicePath);
             SynthesisResult result = voiceCloneService.synthesize(
                     voiceBytes,
-                    job.originalFilename(),
+                    CHARACTER_SAMPLE_FILENAME,
                     job.contentType(),
                     job.text(),
                     job.stylePrompt());
@@ -254,7 +307,6 @@ public class SynthesisJobService {
         private final String id;
         private final String text;
         private final String stylePrompt;
-        private final String originalFilename;
         private final String contentType;
         private final Instant createdAt;
         private volatile Instant startedAt;
@@ -263,23 +315,40 @@ public class SynthesisJobService {
         private volatile String error;
         private volatile byte[] audioBytes;
         private volatile long mimoElapsedMillis;
+        private volatile boolean archived;
+        private volatile String groupName;
+        private volatile boolean read;
+        private volatile String characterId;
+        private volatile String characterName;
 
-        public SynthesisJob(String id, String text, String stylePrompt, String originalFilename, String contentType) {
-            this(id, text, stylePrompt, originalFilename, contentType, Instant.now());
+        public SynthesisJob(String id, String text, String stylePrompt, String contentType) {
+            this(id, text, stylePrompt, contentType, "", "");
+        }
+
+        public SynthesisJob(
+                String id,
+                String text,
+                String stylePrompt,
+                String contentType,
+                String characterId,
+                String characterName) {
+            this(id, text, stylePrompt, contentType, characterId, characterName, Instant.now());
         }
 
         private SynthesisJob(
                 String id,
                 String text,
                 String stylePrompt,
-                String originalFilename,
                 String contentType,
+                String characterId,
+                String characterName,
                 Instant createdAt) {
             this.id = id;
             this.text = text;
             this.stylePrompt = stylePrompt;
-            this.originalFilename = originalFilename;
             this.contentType = contentType;
+            this.characterId = characterId == null ? "" : characterId;
+            this.characterName = characterName == null ? "" : characterName;
             this.createdAt = createdAt;
             this.status = SynthesisStatus.QUEUED;
         }
@@ -306,19 +375,33 @@ public class SynthesisJobService {
             this.audioBytes = audioBytes;
         }
 
+        public void setArchiveState(boolean archived, String groupName) {
+            this.archived = archived;
+            String normalizedGroup = groupName == null ? "" : groupName.trim();
+            this.groupName = normalizedGroup;
+        }
+
+        public void setRead(boolean read) {
+            this.read = read;
+        }
+
         public static SynthesisJob fromPersisted(PersistedJob persisted) {
             SynthesisJob job = new SynthesisJob(
                     persisted.id(),
                     persisted.text(),
                     persisted.stylePrompt(),
-                    persisted.originalFilename(),
                     persisted.contentType(),
+                    persisted.characterId(),
+                    persisted.characterName(),
                     persisted.createdAt());
             job.status = persisted.status();
             job.error = persisted.error();
             job.startedAt = persisted.startedAt();
             job.finishedAt = persisted.finishedAt();
             job.mimoElapsedMillis = persisted.mimoElapsedMillis();
+            job.archived = persisted.archived();
+            job.groupName = persisted.groupName();
+            job.read = persisted.read();
             return job;
         }
 
@@ -332,10 +415,6 @@ public class SynthesisJobService {
 
         public String stylePrompt() {
             return stylePrompt;
-        }
-
-        public String originalFilename() {
-            return originalFilename;
         }
 
         public String contentType() {
@@ -369,31 +448,59 @@ public class SynthesisJobService {
         public long mimoElapsedMillis() {
             return mimoElapsedMillis;
         }
+
+        public boolean archived() {
+            return archived;
+        }
+
+        public String groupName() {
+            return groupName;
+        }
+
+        public boolean read() {
+            return read;
+        }
+
+        public String characterId() {
+            return characterId;
+        }
+
+        public String characterName() {
+            return characterName;
+        }
     }
 
     public record SynthesisJobSummary(
             String id,
             String text,
             String stylePrompt,
-            String originalFilename,
             Instant createdAt,
             Instant startedAt,
             Instant finishedAt,
             SynthesisStatus status,
             String error,
-            long mimoElapsedMillis) {
+            long mimoElapsedMillis,
+            boolean archived,
+            String groupName,
+            boolean read,
+            String characterId,
+            String characterName) {
         public static SynthesisJobSummary from(SynthesisJob job) {
             return new SynthesisJobSummary(
                     job.id(),
                     job.text(),
                     job.stylePrompt(),
-                    job.originalFilename(),
                     job.createdAt(),
                     job.startedAt(),
                     job.finishedAt(),
                     job.status(),
                     job.error(),
-                    job.mimoElapsedMillis());
+                    job.mimoElapsedMillis(),
+                    job.archived(),
+                    job.groupName(),
+                    job.read(),
+                    job.characterId(),
+                    job.characterName());
         }
     }
 
@@ -401,27 +508,35 @@ public class SynthesisJobService {
             String id,
             String text,
             String stylePrompt,
-            String originalFilename,
             String contentType,
             Instant createdAt,
             Instant startedAt,
             Instant finishedAt,
             SynthesisStatus status,
             String error,
-            long mimoElapsedMillis) {
+            long mimoElapsedMillis,
+            boolean archived,
+            String groupName,
+            boolean read,
+            String characterId,
+            String characterName) {
         public static PersistedJob from(SynthesisJob job) {
             return new PersistedJob(
                     job.id(),
                     job.text(),
                     job.stylePrompt(),
-                    job.originalFilename(),
                     job.contentType(),
                     job.createdAt(),
                     job.startedAt(),
                     job.finishedAt(),
                     job.status(),
                     job.error(),
-                    job.mimoElapsedMillis());
+                    job.mimoElapsedMillis(),
+                    job.archived(),
+                    job.groupName(),
+                    job.read(),
+                    job.characterId(),
+                    job.characterName());
         }
     }
 }

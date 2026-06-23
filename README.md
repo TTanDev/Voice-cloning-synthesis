@@ -1,6 +1,6 @@
 # MiMo Voice Cloning Synthesis Tool
 
-> 🎤 Upload a voice sample, type some text — get back speech in that cloned voice.
+> 🎭 Create reusable voice characters, type text, and generate cloned-voice speech from your browser.
 
 [中文文档](README_zh.md)
 
@@ -8,7 +8,7 @@
 
 ---
 
-A local web application for voice cloning and speech synthesis, powered by the [Xiaomi MiMo](https://platform.xiaomimimo.com/) `mimo-v2.5-tts-voiceclone` model. No GPU, no Python dependencies, no Docker — just clone a voice and start generating speech from your browser.
+A local web application for voice cloning and speech synthesis, powered by the [Xiaomi MiMo](https://platform.xiaomimimo.com/) `mimo-v2.5-tts-voiceclone` model. No GPU, no Python dependencies, no Docker. Create voice characters from local samples, reuse them across synthesis jobs, and manage every generated result locally.
 
 ---
 
@@ -28,8 +28,8 @@ mvn spring-boot:run
 
 ## ✨ What Can It Do?
 
-### 🎤 Clone Any Voice
-Upload an mp3/wav/m4a sample (~10 MB max). The model learns the voice characteristics instantly — no training, no fine-tuning. One upload, ready to go.
+### 🎭 Reusable Voice Characters
+Create a character once by filling in character info, choosing a local mp3/wav/m4a sample, and letting the app convert it to a validated 24kHz mono WAV sample. Future synthesis jobs select a character instead of uploading the same sample again.
 
 ### 🎭 Rich Emotional Control
 Go far beyond flat robotic TTS. Direct how the voice sounds with:
@@ -49,10 +49,13 @@ Supported audio tags: `[sigh]` · `[chuckle]` · `[trembling]` · `[deep breath]
 Submit multiple synthesis jobs at once. They process sequentially in the background — no blocking, no waiting. You'll get a browser notification when each job finishes.
 
 ### 🎧 Waveform Player
-Built-in audio player with real-time Canvas waveform visualization. Scrub through your synthesis, preview any segment, download as WAV.
+Built-in audio player with real-time Canvas waveform visualization. Scrub through synthesis results on the main page and history page, and preview character samples from the character manager.
 
-### 📜 Persistent History
-Every result is saved locally with full metadata. Replay, download, or batch-delete past jobs — nothing gets lost between sessions.
+### 📜 Persistent History & Batch Actions
+Move completed synthesis results into a dedicated History page, group them, search in real time, replay, download, move them back, or batch-delete them. The main page keeps the active queue focused on current results.
+
+### 🧩 Character Management
+Create, preview, and delete voice characters from a dedicated page. The app tracks which history records reference each character so accidental deletion is prevented when needed.
 
 ### 🏠 Local-First
 All data stays in your project directory (`.mimo-voiceclone/`). Nothing leaves your machine except the API calls to MiMo.
@@ -62,10 +65,11 @@ All data stays in your project directory (`.mimo-voiceclone/`). Nothing leaves y
 ## 📖 Usage
 
 1. **Configure** → Click Settings (top-right) → paste your MiMo API Key
-2. **Upload** → Drop a voice sample (mp3, wav, m4a)
-3. **Style** (optional) → Type a style prompt or pick a preset
-4. **Synthesize** → Enter text with optional tags, click Submit
-5. **Manage** → Play, download, or organize results in History
+2. **Create a Character** → Open Character Management, fill in character info, choose a sample, convert and save
+3. **Select a Character** → Return to the synthesis page and pick a saved character
+4. **Style** (optional) → Type a style prompt or pick a preset
+5. **Synthesize** → Enter text with optional tags, click Submit
+6. **Manage** → Play, download, batch-download, archive, group, search, move back, or delete results
 
 ---
 
@@ -76,6 +80,8 @@ All data stays in your project directory (`.mimo-voiceclone/`). Nothing leaves y
 ├── src/main/java/com/voiceclone/
 │   ├── MimoVoiceCloneApplication.java    # Spring Boot entry point
 │   ├── api/
+│   │   ├── CharacterController.java      # Character REST endpoints
+│   │   ├── PageController.java           # HTML route mappings
 │   │   ├── SynthesisController.java      # Synthesis REST endpoints
 │   │   ├── SettingsController.java       # Settings REST endpoints
 │   │   ├── ApiException.java             # Custom exception
@@ -84,13 +90,20 @@ All data stays in your project directory (`.mimo-voiceclone/`). Nothing leaves y
 │   │   ├── MimoSettings.java             # Settings model
 │   │   └── SettingsService.java          # Settings persistence
 │   └── service/
+│       ├── CharacterService.java         # Character sample persistence
 │       ├── MimoVoiceCloneService.java    # MiMo API client
 │       └── SynthesisJobService.java      # Async job queue & persistence
 └── src/main/resources/
     ├── application.properties            # App configuration
     └── static/
-        ├── index.html                    # Frontend page
-        ├── app.js                        # Frontend logic
+        ├── index.html                    # Synthesis page
+        ├── history.html                  # Dedicated history page
+        ├── characters.html               # Character management page
+        ├── app.js                        # Main page logic
+        ├── history.js                    # History page logic
+        ├── characters.js                 # Character page logic
+        ├── audio-wave-player.js          # Shared waveform player
+        ├── audio-convert.js              # Browser-side WAV conversion
         └── styles.css                    # Styles
 ```
 
@@ -122,7 +135,8 @@ All data is stored locally in the `.mimo-voiceclone/` directory:
 |----------|----------|
 | `settings.json` | API Key and Base URL |
 | `history/` | Synthesis results (JSON metadata + WAV audio) |
-| `voice-queue/` | Temporary voice samples for pending jobs (auto-cleaned) |
+| `characters/` | Voice character metadata + converted WAV samples |
+| `voice-queue/` | Temporary job samples for pending jobs (auto-cleaned) |
 
 This directory is in `.gitignore` and will **never** be committed.
 

@@ -46,15 +46,21 @@
         </div>
 
         <form class="form" id="synthesisForm">
-          <label class="upload" for="voiceFile" id="dropZone">
-            <span class="upload-icon">↑</span>
-            <span>
-              <strong id="fileName" data-i18n="uploadDefault">选择或拖入声音样本</strong>
-              <small data-i18n="uploadHint">支持 mp3 / wav / m4a，Base64 编码后不超过 10 MB。</small>
-            </span>
-            <span class="upload-action" data-i18n="chooseFile">选择文件</span>
-            <input id="voiceFile" name="voiceFile" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/m4a" required />
-          </label>
+          <section class="character-picker" id="characterPicker">
+            <div class="character-picker-head">
+              <div>
+                <strong data-i18n="characterPickerTitle">选择角色</strong>
+                <small id="selectedCharacterText" data-i18n="characterPickerHint">请选择一个已创建的声音角色。</small>
+              </div>
+              <a class="secondary-button compact-link nav-button" href="/characters">
+                <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Z"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                <span data-i18n="manageCharacters">管理角色</span>
+              </a>
+            </div>
+            <div class="character-option-list" id="characterOptions">
+              <div class="empty-history" data-i18n="charactersLoading">正在读取角色...</div>
+            </div>
+          </section>
 
           <div class="grid-two">
             <label class="field">
@@ -120,21 +126,8 @@
             </div>
           </div>
 
-          <div class="wave" id="waveContainer">
-            <canvas id="waveCanvas"></canvas>
-          </div>
-
-          <div class="custom-player" id="customPlayer">
-            <button class="player-play-btn" id="playerPlayBtn" type="button" title="播放/暂停">
-              <svg id="playerPlayIcon" viewBox="0 0 24 24" width="20" height="20"><polygon points="6,3 20,12 6,21" fill="currentColor"/></svg>
-              <svg id="playerPauseIcon" viewBox="0 0 24 24" width="20" height="20" style="display:none"><rect x="5" y="3" width="4" height="18" rx="1" fill="currentColor"/><rect x="15" y="3" width="4" height="18" rx="1" fill="currentColor"/></svg>
-            </button>
-            <div class="player-progress" id="playerProgress">
-              <div class="player-progress-fill" id="playerProgressFill"></div>
-            </div>
-            <span class="player-time" id="playerTime">0:00</span>
-          </div>
-          <div class="player-text" id="playerText">
+          <div id="mainWavePlayer" class="wave-player-root"></div>
+          <template id="tagGuideTemplate">
             <div id="tagGuide" data-i18n-html="tagGuide">
             <div class="guide-section">
               <div class="guide-heading">风格标签 <span class="guide-desc">放在文本开头，控制整体语气</span></div>
@@ -155,9 +148,8 @@
               <div class="guide-row"><span class="guide-label">哭笑</span>笑 轻笑 大笑 冷笑 抽泣 呜咽 哽咽 嚎啕大哭</div>
             </div>
             </div>
-          </div>
+          </template>
 
-          <audio id="audioPlayer"></audio>
           <div class="result-actions">
             <a class="secondary-button disabled" id="downloadLink" href="#" download="mimo-voiceclone.wav" data-i18n="downloadWav">下载 wav</a>
             <button class="secondary-button" id="clearButton" type="button" data-i18n="clearBtn">清空当前</button>
@@ -168,17 +160,27 @@
       <section class="panel history-panel">
         <div class="panel-head">
           <div>
-            <h2 data-i18n="historyTitle">历史合成结果</h2>
-            <p data-i18n="historyDesc">后台任务完成后会保存在本机历史中。</p>
+            <h2 data-i18n="historyTitle">合成结果</h2>
+            <p data-i18n="historyDesc">这里显示队列和未收进历史的合成结果。</p>
           </div>
-          <label class="select-all-wrap">
-            <input type="checkbox" id="selectAllJobs" />
-            <span data-i18n="selectAll">全选</span>
-          </label>
+          <div class="panel-tools">
+            <a class="secondary-button compact-link nav-button" id="historyPageLink" href="/history">
+              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/><path d="M8 5v14"/></svg>
+              <span data-i18n="historyPageBtn">历史合成结果</span>
+            </a>
+            <label class="select-all-wrap">
+              <input type="checkbox" id="selectAllJobs" />
+              <span data-i18n="selectAll">全选</span>
+            </label>
+          </div>
         </div>
         <div class="batch-bar" id="batchBar">
           <span id="batchCount" data-i18n="batchCount">已选 0 项</span>
-          <button type="button" class="batch-delete-btn" id="batchDeleteBtn" data-i18n="batchDeleteBtn">删除选中</button>
+          <div class="batch-actions">
+            <button type="button" class="batch-download-btn" id="batchDownloadBtn" data-i18n="batchDownloadBtn">下载</button>
+            <button type="button" class="batch-archive-btn" id="batchArchiveBtn" data-i18n="batchArchiveBtn">收进历史</button>
+            <button type="button" class="batch-delete-btn" id="batchDeleteBtn" data-i18n="batchDeleteBtn">删除选中</button>
+          </div>
         </div>
         <div class="history-list" id="historyList">
           <div class="empty-history" data-i18n="emptyHistory">暂无历史任务。</div>
@@ -230,6 +232,36 @@
     </div>
   </dialog>
 
+  <dialog class="confirm-modal archive-modal" id="archiveModal">
+    <form class="confirm-card" id="archiveForm" method="dialog">
+      <div>
+        <h2 class="archive-title" data-i18n="archiveTitle">收进历史合成结果</h2>
+        <p class="archive-desc" data-i18n="archiveDesc">选择一个已有分组，或输入新分组名称。</p>
+      </div>
+      <input type="hidden" id="archiveJobId" />
+      <label class="field">
+        <span data-i18n="archiveGroupLabel">已有分组</span>
+        <input type="hidden" id="archiveGroupSelect" />
+        <div class="archive-select" id="archiveGroupCustom">
+          <button class="archive-select-button" id="archiveGroupButton" type="button" aria-haspopup="listbox" aria-expanded="false">
+            <span id="archiveGroupLabelText">未分组</span>
+            <span class="archive-select-arrow">⌄</span>
+          </button>
+          <div class="archive-select-menu" id="archiveGroupMenu" role="listbox"></div>
+        </div>
+      </label>
+      <label class="field">
+        <span data-i18n="archiveNewGroupLabel">新分组</span>
+        <input id="archiveGroupInput" data-i18n-placeholder="archiveNewGroupPlaceholder" placeholder="例如：毕业答辩、短视频旁白" />
+      </label>
+      <div class="confirm-actions">
+        <button type="button" class="secondary-button" id="archiveCancel" data-i18n="cancelBtn">取消</button>
+        <button type="submit" class="primary-button" data-i18n="archiveSubmit">确认收进历史</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/audio-wave-player.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>角色管理 - MiMo 声音复刻合成</title>
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem("mimo-theme") || "light";
+  </script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="app characters-page">
+    <header class="topbar">
+      <div>
+        <h1 data-i18n="charactersPageTitle">角色管理</h1>
+        <p data-i18n="charactersPageDesc">创建可复用的声音角色，合成时直接选择角色。</p>
+      </div>
+      <div class="top-actions">
+        <button class="lang-button" id="langToggle" type="button" title="Switch Language">EN</button>
+        <a class="secondary-button nav-button" href="/">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-7h6v7"/></svg>
+          <span data-i18n="backHome">返回合成页面</span>
+        </a>
+        <a class="secondary-button nav-button" href="/history">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/><path d="M8 5v14"/></svg>
+          <span data-i18n="historyLink">历史合成结果</span>
+        </a>
+        <div class="model-pill">mimo-v2.5-tts-voiceclone</div>
+      </div>
+    </header>
+
+    <section class="characters-layout">
+      <section class="panel character-create-panel">
+        <div class="panel-head">
+          <div>
+            <h2 data-i18n="createTitle">创建角色</h2>
+            <p data-i18n="createDesc">上传本地音频，转换通过后会保存为 24kHz 单声道 WAV 样本。</p>
+          </div>
+        </div>
+        <form class="form" id="characterForm">
+          <label class="field">
+            <span data-i18n="nameLabel">角色名</span>
+            <input id="characterName" autocomplete="off" data-i18n-placeholder="namePlaceholder" placeholder="例如：课堂演讲音色" required />
+          </label>
+          <label class="field">
+            <span data-i18n="descLabel">备注</span>
+            <textarea id="characterDescription" data-i18n-placeholder="descPlaceholder" placeholder="可写用途、声音特点或来源。" rows="3"></textarea>
+          </label>
+          <label class="upload" for="characterFile" id="characterDropZone">
+            <span class="upload-icon">↑</span>
+            <span>
+              <strong id="characterFileName" data-i18n="fileDefault">选择或拖入角色音频样本</strong>
+              <small data-i18n="fileHint">支持 mp3 / wav / m4a。创建前会先转换并校验。</small>
+            </span>
+            <span class="upload-action" data-i18n="chooseFile">选择文件</span>
+            <input id="characterFile" type="file" accept=".mp3,.wav,.m4a,audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/m4a" />
+          </label>
+          <div class="settings-note" id="characterStatus" data-i18n="statusIdle">等待填写角色信息并选择样本。</div>
+          <button class="primary-button" id="createCharacterBtn" type="submit" data-i18n="createBtn">转换并创建角色</button>
+        </form>
+      </section>
+
+      <section class="panel character-list-panel">
+        <div class="panel-head">
+          <div>
+            <h2 data-i18n="listTitle">角色列表</h2>
+            <p data-i18n="listDesc">播放样本、查看用途，或删除未被历史记录使用的角色。</p>
+          </div>
+          <label class="select-all-wrap">
+            <input type="checkbox" id="characterSelectAll" />
+            <span data-i18n="selectAll">全选</span>
+          </label>
+        </div>
+        <div class="batch-bar" id="characterBatchBar">
+          <span id="characterBatchCount" data-i18n="batchCount">已选 0 项</span>
+          <div class="batch-actions">
+            <button type="button" class="batch-delete-btn" id="characterBatchDeleteBtn" data-i18n="batchDeleteBtn">删除选中</button>
+          </div>
+        </div>
+        <div class="character-list" id="characterList">
+          <div class="empty-history" data-i18n="emptyCharacters">暂无角色。</div>
+        </div>
+      </section>
+
+      <section class="panel character-player-panel">
+        <div class="panel-head">
+          <div>
+            <h2 data-i18n="samplePlayerTitle">样本播放器</h2>
+            <p id="characterPlayerStatus" data-i18n="samplePlayerIdle">选择一个角色样本播放。</p>
+          </div>
+        </div>
+        <div class="result-body">
+          <div id="characterWavePlayer" class="wave-player-root"></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog class="confirm-modal" id="characterConfirmModal">
+    <div class="confirm-card">
+      <p class="confirm-msg" id="characterConfirmMsg"></p>
+      <div class="confirm-actions">
+        <button type="button" class="secondary-button" id="characterConfirmCancel" data-i18n="cancelBtn">取消</button>
+        <button type="button" class="primary-button confirm-danger" id="characterConfirmOk" data-i18n="confirmDelete">确认删除</button>
+      </div>
+    </div>
+  </dialog>
+
+  <script src="/audio-convert.js"></script>
+  <script src="/audio-wave-player.js?v=20260623-textless-character-player"></script>
+  <script src="/characters.js?v=20260623-textless-character-player"></script>
+</body>
+</html>
